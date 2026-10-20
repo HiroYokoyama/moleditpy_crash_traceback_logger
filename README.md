@@ -7,6 +7,13 @@ It does not prevent crashes or recover unsaved work.
 
 ## Installation
 
+Download `crash_traceback_logger-0.1.0.zip` from the
+[latest release](https://github.com/HiroYokoyama/moleditpy_crash_traceback_logger/releases/latest)
+and install it with Moleditpy's plugin manager, then restart the app. The ZIP
+contains the plugin and its license documents. Install only one copy.
+
+For a manual source installation:
+
 Copy [`crash_traceback_logger.py`](crash_traceback_logger.py) into
 `~/.moleditpy/plugins/Utility/` (create the folder if necessary), then restart
 Moleditpy. On Windows, `~` normally means `C:\Users\<username>`.
