@@ -12,10 +12,10 @@ import sys
 
 PLUGIN_NAME = "Crash Traceback Logger"
 PLUGIN_VERSION = "0.1.0"
-PLUGIN_AUTHOR = "Hiromichi Yokoyama"
+PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = "Records crash-time Python tracebacks to a local log for troubleshooting."
 PLUGIN_CATEGORY = "Utility"
-PLUGIN_TAGS = ["Utility", "Diagnostics"]
+PLUGIN_TAGS = ["Utility"]
 PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=5.0.0, <6.0.0"
 PLUGIN_SUPPORTED_PYTHON_VERSION = ">=3.9, <3.15"
 PLUGIN_SUPPORTED_OS = ["Windows", "macOS", "Linux", "WSL"]

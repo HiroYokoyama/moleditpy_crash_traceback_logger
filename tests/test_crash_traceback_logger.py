@@ -145,8 +145,8 @@ class PluginTests(unittest.TestCase):
         self.assertEqual(metadata["PLUGIN_SUPPORTED_MOLEDITPY_VERSION"], ">=5.0.0, <6.0.0")
         self.assertEqual(metadata["PLUGIN_SUPPORTED_PYTHON_VERSION"], ">=3.9, <3.15")
         self.assertEqual(metadata["PLUGIN_CATEGORY"], "Utility")
-        self.assertIn("Diagnostics", metadata["PLUGIN_TAGS"])
-        self.assertTrue(metadata["PLUGIN_AUTHOR"])
+        self.assertEqual(metadata["PLUGIN_TAGS"], ["Utility"])
+        self.assertEqual(metadata["PLUGIN_AUTHOR"], "HiroYokoyama")
         self.assertTrue(metadata["PLUGIN_DESCRIPTION"])
 
 
