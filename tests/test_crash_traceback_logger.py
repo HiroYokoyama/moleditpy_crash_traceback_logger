@@ -2,12 +2,13 @@
 
 import ast
 import importlib.util
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, patch
 
 SOURCE = Path(__file__).resolve().parents[1] / "crash_traceback_logger.py"
 
@@ -29,21 +30,19 @@ class PluginTests(unittest.TestCase):
         patch.object(self.plugin.Path, "home", return_value=self.home).start()
         self.enabled = patch.object(self.plugin.faulthandler, "is_enabled", return_value=False).start()
         self.enable = patch.object(self.plugin.faulthandler, "enable").start()
-        self.disable = patch.object(self.plugin.faulthandler, "disable").start()
-        self.register = patch.object(self.plugin.atexit, "register").start()
         self.addCleanup(self.close_file)
 
     def close_file(self):
-        if self.plugin._FH is not None:
-            self.plugin._FH.close()
-            self.plugin._FH = None
+        if self.plugin._FD is not None:
+            os.close(self.plugin._FD)
+            self.plugin._FD = None
 
     def test_creates_directory_header_and_persistent_handle(self):
         self.plugin.initialize(None)
-        handle = self.plugin._FH
-        self.assertFalse(handle.closed)
-        self.enable.assert_called_once_with(file=handle, all_threads=True)
-        self.register.assert_called_once_with(self.plugin._shutdown)
+        descriptor = self.plugin._FD
+        self.assertIsInstance(descriptor, int)
+        os.fstat(descriptor)  # Descriptor still exists after header writer closes.
+        self.enable.assert_called_once_with(file=descriptor, all_threads=True)
         text = (self.home / ".moleditpy/faulthandler.log").read_text(encoding="utf-8")
         self.assertIn("pid=", text)
         self.assertIn("plugin=0.1.0", text)
@@ -53,14 +52,12 @@ class PluginTests(unittest.TestCase):
         self.plugin.initialize(None)
         self.plugin.initialize(None)
         self.enable.assert_called_once()
-        self.register.assert_called_once()
         self.assertEqual((self.home / ".moleditpy/faulthandler.log").read_text().count("=== Moleditpy"), 1)
 
     def test_preserves_preexisting_handler_without_creating_log(self):
         self.enabled.return_value = True
         self.plugin.initialize(None)
         self.enable.assert_not_called()
-        self.register.assert_not_called()
         self.assertFalse((self.home / ".moleditpy").exists())
 
     def test_appends_to_existing_log(self):
@@ -71,64 +68,48 @@ class PluginTests(unittest.TestCase):
         self.plugin.initialize(None)
         self.assertTrue(path.read_text().startswith("previous crash\n=== Moleditpy"))
 
-    def test_shutdown_disables_before_closing_and_is_idempotent(self):
-        handle = Mock()
-        events = Mock()
-        events.attach_mock(self.disable, "disable")
-        events.attach_mock(handle.close, "close")
-        self.plugin._FH = handle
-        self.plugin._shutdown()
-        self.plugin._shutdown()
-        self.assertEqual([c[0] for c in events.mock_calls], ["disable", "close"])
-        self.assertIsNone(self.plugin._FH)
-
-    def test_shutdown_without_ownership_preserves_other_handler(self):
-        self.plugin._shutdown()
-        self.disable.assert_not_called()
-
     def test_unwritable_directory_is_reported_without_starting_handler(self):
         with patch.object(self.plugin.Path, "mkdir", side_effect=PermissionError("denied")):
             with self.assertLogs(self.plugin._LOGGER, level="WARNING"):
                 self.plugin.initialize(None)
-        self.assertIsNone(self.plugin._FH)
+        self.assertIsNone(self.plugin._FD)
         self.enable.assert_not_called()
-        self.register.assert_not_called()
 
     def test_open_failure_is_reported(self):
-        with patch.object(self.plugin.Path, "open", side_effect=OSError("denied")):
+        with patch.object(self.plugin.os, "open", side_effect=OSError("denied")):
             with self.assertLogs(self.plugin._LOGGER, level="WARNING"):
                 self.plugin.initialize(None)
-        self.assertIsNone(self.plugin._FH)
+        self.assertIsNone(self.plugin._FD)
         self.enable.assert_not_called()
 
     def test_write_and_enable_failures_close_handle_and_allow_retry(self):
         for failing_operation in ("write", "flush", "enable"):
             with self.subTest(operation=failing_operation):
-                handle = Mock()
+                handle = MagicMock()
+                handle.__enter__.return_value = handle
                 if failing_operation == "enable":
                     self.enable.side_effect = RuntimeError("unsupported")
                 else:
                     getattr(handle, failing_operation).side_effect = OSError("disk full")
-                with patch.object(self.plugin.Path, "open", return_value=handle):
-                    with self.assertLogs(self.plugin._LOGGER, level="WARNING"):
-                        self.plugin.initialize(None)
-                handle.close.assert_called_once()
-                self.assertIsNone(self.plugin._FH)
-                self.register.assert_not_called()
+                with patch.object(self.plugin.os, "open", return_value=12345):
+                    with patch.object(self.plugin.os, "fdopen", return_value=handle):
+                        with patch.object(self.plugin.os, "close") as close:
+                            with self.assertLogs(self.plugin._LOGGER, level="WARNING"):
+                                self.plugin.initialize(None)
+                            close.assert_called_once_with(12345)
+                self.assertIsNone(self.plugin._FD)
                 self.enable.side_effect = None
         self.plugin.initialize(None)
-        self.assertIsNotNone(self.plugin._FH)
+        self.assertIsNotNone(self.plugin._FD)
 
     def test_cleanup_error_does_not_escape_plugin_initialization(self):
-        handle = Mock()
-        handle.flush.side_effect = OSError("disk full")
-        handle.close.side_effect = OSError("disk full")
-        with patch.object(self.plugin.Path, "open", return_value=handle):
-            with self.assertLogs(self.plugin._LOGGER, level="WARNING"):
-                self.plugin.initialize(None)
-        self.assertIsNone(self.plugin._FH)
+        with patch.object(self.plugin.os, "open", return_value=12345):
+            with patch.object(self.plugin.os, "fdopen", side_effect=OSError("failed")):
+                with patch.object(self.plugin.os, "close", side_effect=OSError("invalid")):
+                    with self.assertLogs(self.plugin._LOGGER, level="WARNING"):
+                        self.plugin.initialize(None)
+        self.assertIsNone(self.plugin._FD)
         self.enable.assert_not_called()
-        self.register.assert_not_called()
 
     def test_metadata_is_literal_and_complete(self):
         metadata = {
@@ -151,10 +132,10 @@ class PluginTests(unittest.TestCase):
 
 
 class SubprocessTests(unittest.TestCase):
-    def run_session(self, fatal=False):
+    def run_session(self, fatal=False, shutdown=False):
         with tempfile.TemporaryDirectory() as folder:
             code = f"""
-import faulthandler, importlib.util, pathlib
+import atexit, faulthandler, importlib.util, pathlib
 faulthandler.disable()
 spec = importlib.util.spec_from_file_location('crash_traceback_logger', {str(SOURCE)!r})
 plugin = importlib.util.module_from_spec(spec)
@@ -162,7 +143,7 @@ spec.loader.exec_module(plugin)
 plugin.Path.home = lambda: pathlib.Path({folder!r})
 plugin.initialize(None)
 def diagnostic_marker():
-    faulthandler.dump_traceback(file=plugin._FH, all_threads=True)
+    faulthandler.dump_traceback(file=plugin._FD, all_threads=True)
 diagnostic_marker()
 """
             if fatal:
@@ -175,8 +156,23 @@ if os.name == 'nt':
 else:
     import resource
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-os.abort()
 """
+                if shutdown:
+                    # Register the failing callback BEFORE plugin initialization.
+                    # A plugin atexit cleanup would then run before this crash.
+                    code = code.replace("\nplugin.initialize(None)\n", "\n")
+                    code = code.replace("\ndiagnostic_marker()\n", "\n")
+                    code += """
+def shutdown_crash_marker():
+    os.abort()
+atexit.register(shutdown_crash_marker)
+# Later callbacks run first; removing Python file objects must not close the FD.
+atexit.register(lambda: __import__('gc').collect())
+plugin.initialize(None)
+diagnostic_marker()
+"""
+                else:
+                    code += "os.abort()\n"
             result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=20)
             text = (Path(folder) / ".moleditpy/faulthandler.log").read_text(encoding="utf-8")
             return result, text
@@ -192,6 +188,12 @@ os.abort()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Fatal Python error", text)
         self.assertIn("<module>", text)
+
+    def test_shutdown_abort_is_still_recorded(self):
+        result, text = self.run_session(fatal=True, shutdown=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Fatal Python error", text)
+        self.assertIn("shutdown_crash_marker", text)
 
 
 if __name__ == "__main__":

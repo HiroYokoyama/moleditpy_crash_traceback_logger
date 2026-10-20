@@ -47,6 +47,8 @@ session. Disable the old `crash_traceback_log.py` too, if present.
 The log is not automatically rotated. After closing all Moleditpy processes,
 you can archive or delete `faulthandler.log`. Do not move, replace or rotate the
 file while logging is active: Python keeps its file descriptor open.
+One descriptor is intentionally retained until process exit so logging remains
+available during shutdown. The operating system closes it when the process ends.
 
 ## Development
 
