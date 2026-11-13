@@ -45,7 +45,7 @@ class PluginTests(unittest.TestCase):
         self.enable.assert_called_once_with(file=descriptor, all_threads=True)
         text = (self.home / ".moleditpy/faulthandler.log").read_text(encoding="utf-8")
         self.assertIn("pid=", text)
-        self.assertIn("plugin=0.1.0", text)
+        self.assertIn("plugin=1.0.0", text)
         self.assertIn("python=", text)
 
     def test_initializing_twice_does_not_duplicate_handler_or_header(self):
@@ -119,7 +119,7 @@ class PluginTests(unittest.TestCase):
             and node.targets[0].id.startswith("PLUGIN_")
         }
         self.assertEqual(metadata["PLUGIN_NAME"], "Crash Traceback Logger")
-        self.assertEqual(metadata["PLUGIN_VERSION"], "0.1.0")
+        self.assertEqual(metadata["PLUGIN_VERSION"], "1.0.0")
         self.assertEqual(metadata["PLUGIN_DEPENDENCIES"], [])
         self.assertEqual(metadata["PLUGIN_LICENSE"], "LGPL-3.0-or-later")
         self.assertEqual(metadata["PLUGIN_SUPPORTED_OS"], ["Windows", "macOS", "Linux", "WSL"])
@@ -181,7 +181,7 @@ diagnostic_marker()
         result, text = self.run_session()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("diagnostic_marker", text)
-        self.assertIn("plugin=0.1.0", text)
+        self.assertIn("plugin=1.0.0", text)
 
     def test_fatal_abort_is_recorded_in_isolated_process(self):
         result, text = self.run_session(fatal=True)

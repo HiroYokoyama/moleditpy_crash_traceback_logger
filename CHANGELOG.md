@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.0 — 2026-11-14
+
+- First stable release; no change in behaviour since 0.1.0.
+
 ## 0.1.0 — 2026-10-21
 
 - Publish the local crash diagnostic as **Crash Traceback Logger**.
